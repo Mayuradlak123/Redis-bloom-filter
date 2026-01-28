@@ -22,6 +22,9 @@ instance/
 .vscode/
 .idea/
 
+# Data
+data/
+
 # OS
 .DS_Store
 Thumbs.db

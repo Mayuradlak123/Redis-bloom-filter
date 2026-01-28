@@ -37,7 +37,22 @@ System Design/
 - Python 3.x
 - Redis server running locally on port `6379`
 
-### 2. Setup & Installation
+### 2. Prepare Seeding Data
+Create a `data/users.json` file (ignored by git) with the following structure:
+```json
+[
+  {
+    "username": "Dorthy71",
+    "email": "user@example.com"
+  },
+  {
+    "username": "MayurDev",
+    "email": "mayur@example.com"
+  }
+]
+```
+
+### 3. Setup & Installation
 ```bash
 pip install -r requirements.txt
 cp .env.example .env
