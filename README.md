@@ -1,81 +1,106 @@
-# Redis Bloom Filter Username Checker
+# System Design: Redis Bloom Filter & SSE Demo
 
-A high-performance, real-time username availability checker built with Flask and Redis. This project implements a custom Bloom Filter using Redis bitsets, making it compatible even with older Redis versions that do not support the `RedisBloom` module.
+A high-performance, real-time system demonstrating **Bloom Filters** for efficient membership testing and **Server-Sent Events (SSE)** for live data streaming. This project is built with Flask, Redis, and PostgreSQL, all orchestrated with Docker.
 
 ## 🚀 Features
-- **Instant Lookup**: Debounced client-side input triggers real-time availability checks.
-- **Custom Bloom Filter**: Scalable manual implementation using Redis `SETBIT` and `GETBIT`.
-- **Clean Architecture**: Backend organized into `api/routes` for endpoints and `api/services` for business logic.
-- **Premium UI**: Modern glassmorphism design using Tailwind CSS.
-- **Efficient**: Optimized for large datasets (up to 1 crore records) with a low false-positive rate.
+- **Instant Username Check**: Fast-path validation using a Redis-backed Bloom Filter.
+- **Multi-Layer Validation**: Fallback to PostgreSQL (Slow Path) to resolve Bloom Filter false positives.
+- **Real-time Event Stream**: Live monitoring dashboard powered by Server-Sent Events (SSE).
+- **Modern UI**: Fully responsive, glassmorphism design built with Tailwind CSS.
+- **Cloud-Ready**: Fully dockerized with persistence for both Redis and PostgreSQL.
+
+---
 
 ## 🛠️ Tech Stack
-- **Backend**: Python, Flask
-- **Cache/Storage**: Redis
-- **Frontend**: HTML5, Tailwind CSS, JavaScript (Debounced Fetch API)
-- **Hashing**: SHA-256 (via `hashlib`)
+- **Backend**: Python (Flask)
+- **Fast Path**: Redis (Bitsets for Bloom Filter)
+- **Slow Path**: PostgreSQL (Source of Truth)
+- **Streaming**: Server-Sent Events (SSE)
+- **Infrastructure**: Docker & Docker Compose
+- **Frontend**: Tailwind CSS & Vanilla JavaScript
+
+---
 
 ## 📂 Project Structure
 ```text
 System Design/
 ├── api/
 │   ├── routes/
-│   │   └── auth.py          # API route definitions & seeding logic
+│   │   ├── auth.py          # Username check & seeding logic
+│   │   └── events.py        # SSE stream generator
 │   └── services/
-│       └── bloom_filter.py  # Manual Bloom Filter implementation
+│       ├── bloom_filter.py  # Manual Redis Bloom Filter implementation
+│       └── database.py       # PostgreSQL service layer
 ├── data/
-│   └── users.json           # Initial seeding data (optional)
+│   └── users.json           # Initial seeding data (Ignored by Git)
 ├── templates/
-│   └── index.html           # Frontend UI
-├── app.py                   # Flask entry point
-└── README.md                # Project documentation
+│   ├── index.html           # Bloom Filter UI
+│   └── sse.html             # Real-time Events UI
+├── app.py                   # Flask Application Entry
+├── Dockerfile               # App Container Defintion
+└── docker-compose.yml       # Infrastructure Orchestration
 ```
+
+---
 
 ## ⚙️ Setup & Installation
 
 ### 1. Prerequisites
-- Python 3.x
-- Redis server running locally on port `6379`
+- Docker & Docker Compose
 
 ### 2. Prepare Seeding Data
-Create a `data/users.json` file (ignored by git) with the following structure:
+Create a `data/users.json` file (ignored by git) to seed the system:
 ```json
 [
-  {
-    "username": "Dorthy71",
-    "email": "user@example.com"
-  },
-  {
-    "username": "MayurDev",
-    "email": "mayur@example.com"
-  }
+  { "username": "Dorthy71", "email": "user@gmail.com" },
+  { "username": "MayurDev", "email": "dev@example.com" }
 ]
 ```
 
-### 3. Setup & Installation
+### 3. Run with Docker (Recommended)
+```bash
+docker-compose up --build
+```
+- **App**: `http://localhost:5000`
+- **Database UI (Adminer)**: `http://localhost:8080`
+
+### 4. Local Setup (Alternative)
 ```bash
 pip install -r requirements.txt
 cp .env.example .env
-```
-
-### 3. Run the Application
-```bash
+# Ensure Redis and Postgres are running locally
 python app.py
 ```
-The application will start on `http://127.0.0.1:5000`.
+
+---
+
+## 💡 How it Works: Bloom Filter
+
+A Bloom Filter is a space-efficient probabilistic data structure.
+
+### The Workflow
+1.  **Seeding**: On startup, usernames are hashed and their bits are set in a Redis bitset.
+2.  **Fast Path (Check)**: When checking a name, the system hashes it 7 times. If any corresponding bit in Redis is `0`, the name is **available**.
+3.  **Slow Path (Lookup)**: If all 7 bits are `1`, it might be a false positive. The system then queries PostgreSQL to be 100% sure.
+
+### Hashing Mechanism
+We use SHA-256 with 7 different salts to generate unique positions in a 10-million-bit array.
+
+---
+
+## 📡 Server-Sent Events (SSE)
+The SSE demo showcases how the server can push updates to the client without the client having to poll.
+- **Endpoint**: `/stream` returns a `text/event-stream`.
+- **UI**: A reactive dashboard that displays live "system metrics" as they arrive.
+
+---
 
 ## 📡 API Reference
 
 ### Check Username Availability
 - **URL**: `/api/check-username`
 - **Method**: `GET`
-- **URL Params**: `username=[string]`
-- **Success Response**: 
-  - `{"available": true, "username": "JohnDoe"}` (Username not in Bloom filter)
-  - `{"available": false, "username": "Dorthy71"}` (Username potentially taken)
-
-## 💡 How it Works
-1. **Seeding**: On startup, the `api/routes/auth.py` script reads `data/users.json` and adds all existing usernames to the Redis Bloom filter.
-2. **Checking**: When a user types in the UI, a debounced request is sent to the Flask API.
-3. **Lookup**: The `BloomFilter` service runs the username through 7 different hash functions and checks the corresponding bits in Redis.
-4. **Result**: If any bit is `0`, the username is **definitely available**. If all are `1`, the username is **likely taken**.
+- **Query Params**: `username=[string]`
+- **Response**: 
+  - `{"available": true, "username": "..."}`
+  - `{"available": false, "username": "...", "source": "PostgreSQL"}`
