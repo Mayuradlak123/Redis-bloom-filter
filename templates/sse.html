@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server-Sent Events (SSE) Demo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .stream-item {
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+
+<body class="bg-indigo-50 min-h-screen p-6 md:p-12">
+    <div class="max-w-4xl mx-auto space-y-8">
+        <div class="flex items-center justify-between">
+            <div class="space-y-1">
+                <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Real-time Event Stream</h1>
+                <p class="text-slate-500 font-medium">Monitoring live updates via Server-Sent Events (SSE)</p>
+            </div>
+            <a href="/"
+                class="px-4 py-2 bg-white text-indigo-600 font-semibold rounded-xl shadow-sm border border-indigo-100 hover:bg-indigo-50 transition-colors">
+                &larr; Back to Bloom Filter
+            </a>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <!-- Connection Status Card -->
+            <div class="glass p-6 rounded-3xl shadow-lg border-2 border-white">
+                <h2 class="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4">Status</h2>
+                <div class="flex items-center gap-3">
+                    <div id="status-dot" class="w-3 h-3 rounded-full bg-amber-500 animate-pulse"></div>
+                    <span id="status-text" class="text-lg font-bold text-slate-700">Connecting...</span>
+                </div>
+            </div>
+
+            <!-- Total Events Card -->
+            <div class="glass p-6 rounded-3xl shadow-lg border-2 border-white">
+                <h2 class="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4">Events Captured</h2>
+                <span id="event-count" class="text-3xl font-black text-indigo-600">0</span>
+            </div>
+
+            <!-- Last Update Card -->
+            <div class="glass p-6 rounded-3xl shadow-lg border-2 border-white">
+                <h2 class="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4">Last Sync</h2>
+                <span id="last-sync" class="text-xl font-bold text-slate-700">--:--:--</span>
+            </div>
+        </div>
+
+        <!-- Event Feed -->
+        <div class="glass rounded-3xl shadow-xl border-2 border-white overflow-hidden">
+            <div class="bg-white/50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+                <span class="font-bold text-slate-700">Live Feed</span>
+                <button id="clear-btn"
+                    class="text-xs font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-wider">Clear
+                    Logs</button>
+            </div>
+            <div id="event-feed" class="p-6 space-y-4 max-h-[500px] overflow-y-auto">
+                <!-- Events will be appended here -->
+                <div class="text-center py-12 text-slate-400 italic">Waiting for initial data stream...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const eventFeed = document.getElementById('event-feed');
+        const statusText = document.getElementById('status-text');
+        const statusDot = document.getElementById('status-dot');
+        const eventCountEl = document.getElementById('event-count');
+        const lastSyncEl = document.getElementById('last-sync');
+        const clearBtn = document.getElementById('clear-btn');
+
+        let count = 0;
+        let eventSource;
+
+        function startSSE() {
+            eventSource = new EventSource('/stream');
+
+            eventSource.onopen = () => {
+                statusText.innerText = 'Connected';
+                statusDot.classList.replace('bg-amber-500', 'bg-emerald-500');
+                statusDot.classList.remove('animate-pulse');
+                console.log("SSE Connection opened.");
+            };
+
+            eventSource.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+
+                // Remove placeholder if it's the first message
+                if (count === 0) eventFeed.innerHTML = '';
+
+                count++;
+                eventCountEl.innerText = count;
+                lastSyncEl.innerText = data.time;
+
+                const card = document.createElement('div');
+                card.className = 'stream-item bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between hover:shadow-md transition-shadow';
+                card.innerHTML = `
+                    <div class="flex items-center gap-4">
+                        <div class="bg-indigo-100 p-2 rounded-lg">
+                            <span class="text-xs font-bold text-indigo-700">${data.value}%</span>
+                        </div>
+                        <div>
+                            <p class="font-bold text-slate-800 text-sm">${data.topic}</p>
+                            <p class="text-xs text-slate-500">${data.message}</p>
+                        </div>
+                    </div>
+                    <span class="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-full uppercase tracking-tighter">${data.time}</span>
+                `;
+
+                eventFeed.prepend(card);
+
+                // Keep only last 20 items to avoid memory issues
+                if (eventFeed.children.length > 20) {
+                    eventFeed.removeChild(eventFeed.lastChild);
+                }
+            };
+
+            eventSource.onerror = (err) => {
+                console.error("EventSource failed:", err);
+                statusText.innerText = 'Disconnected';
+                statusDot.classList.replace('bg-emerald-500', 'bg-rose-500');
+                statusDot.classList.add('animate-pulse');
+                eventSource.close();
+
+                // Attempt to reconnect after 5 seconds
+                setTimeout(startSSE, 5000);
+            };
+        }
+
+        clearBtn.addEventListener('click', () => {
+            eventFeed.innerHTML = '<div class="text-center py-12 text-slate-400 italic">Feed cleared. Waiting for new data...</div>';
+            count = 0;
+            eventCountEl.innerText = count;
+        });
+
+        startSSE();
+    </script>
+</body>
+
+</html>

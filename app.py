@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 from flask import Flask, render_template
 from api.routes.auth import auth_bp
+from api.routes.events import events_bp
 
 # Load environment variables
 load_dotenv()
@@ -10,6 +11,7 @@ app = Flask(__name__)
 
 # Register Blueprints
 app.register_blueprint(auth_bp, url_prefix='/api')
+app.register_blueprint(events_bp)
 
 @app.route('/')
 def index():

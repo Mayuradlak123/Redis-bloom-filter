@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify
 from api.services.bloom_filter import BloomFilter
+from api.services.database import db_service
 import redis
 import json
 import os
@@ -31,29 +32,40 @@ def check_username():
     if not username:
         return jsonify({'available': True, 'message': 'Username is required'}), 400
     
-    # Bloom Filter check
-    is_taken = bf.exists(username)
+    # Bloom Filter check (Fast Path)
+    might_exist = bf.exists(username)
     
-    # Note: Bloom Filter has false positives, but no false negatives.
-    # If it says 'exists', it *might* be taken. If it says 'not exists', it is definitely available.
+    if not might_exist:
+        # Definitely not in the system
+        return jsonify({'available': True, 'username': username})
+    
+    # Slow Path: Verify against PostgreSQL
+    is_taken = db_service.user_exists(username)
+    
     return jsonify({
         'available': not is_taken,
-        'username': username
+        'username': username,
+        'source': 'PostgreSQL' if is_taken else 'Bloom Filter (False Positive Resolved)'
     })
 
 def seed_bloom_filter(data_path):
-    """Seed the bloom filter with existing usernames from JSON."""
+    """Seed the bloom filter and postgres with existing usernames from JSON."""
     if not os.path.exists(data_path):
         print(f"Data file not found: {data_path}")
         return
+
+    # Initialize DB table
+    db_service.initialize_db()
 
     with open(data_path, 'r') as f:
         users = json.load(f)
         for user in users:
             username = user.get('username')
+            email = user.get('email')
             if username:
                 bf.add(username)
-    print(f"Bloom Filter seeded with {len(users)} users.")
+                db_service.add_user(username, email)
+    print(f"✅ Seeding complete: {len(users)} users added to Bloom Filter and PostgreSQL.")
 
 # Seed on import/initialization
 USERS_DATA_PATH = os.getenv('USERS_DATA_PATH', 'data/users.json')
